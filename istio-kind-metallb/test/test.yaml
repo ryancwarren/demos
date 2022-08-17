@@ -1,0 +1,116 @@
+kind: Deployment 
+apiVersion: apps/v1
+metadata:
+  name: demo-app-v1
+  labels:
+    app: demo-app
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-app
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: demo-app
+        version: v1
+    spec:
+      containers:
+      - name: demo-app
+        image: hashicorp/http-echo:0.2.3
+        args:
+        - "-text=v1"
+---
+kind: Deployment 
+apiVersion: apps/v1
+metadata:
+  name: demo-app-v2
+  labels:
+    app: demo-app
+    version: v2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-app
+      version: v2
+  template:
+    metadata:
+      labels:
+        app: demo-app
+        version: v2
+    spec:
+      containers:
+      - name: demo-app
+        image: hashicorp/http-echo:0.2.3
+        args:
+        - "-text=v2"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-app
+  labels:
+    app: demo-app
+    service: demo-app
+spec:
+  ports:
+  - port: 9081
+    targetPort: 5678
+    name: http
+  selector:
+    app: demo-app
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: demo-app
+spec:
+  host: demo-app
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+  - name: v2
+    labels:
+      version: v2
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: demo-app
+spec:
+  selector:
+    istio: ingressgateway # use istio default controller
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "*"
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: demo-app
+spec:
+  hosts:
+  - "*"
+  gateways:
+  - demo-app
+  http:
+  - match:
+    - headers:
+        cloud-firm:
+          regex: ^.+sdlc-canary.*$|^.+-beta$
+    route:
+    - destination:
+        host: demo-app
+        subset: v1
+  - route:
+    - destination:
+        host: demo-app
+        subset: v2
